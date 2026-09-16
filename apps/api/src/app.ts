@@ -81,15 +81,21 @@ export function createApp(): Application {
       databaseHealthy(),
       isRedisEnabled() ? redisHealthy() : Promise.resolve(null),
     ]);
-    const ready = database;
+
+    // Only the database decides readiness. Redis is reported for visibility but is never
+    // required: nothing in the booking write path reads it, so an unreachable cache must
+    // not take an otherwise healthy instance out of rotation.
+    const ready = database.healthy;
+
     res.status(ready ? 200 : 503).json({
       success: ready,
       data: {
         ready,
         checks: {
-          database: database ? 'up' : 'down',
+          database: database.healthy ? 'up' : 'down',
           redis: redis === null ? 'not configured' : redis ? 'up' : 'down',
         },
+        ...(database.reason ? { databaseError: database.reason } : {}),
       },
     });
   });

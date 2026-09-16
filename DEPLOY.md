@@ -1,91 +1,175 @@
-# Deploying (free)
+# Deploying
 
-One account, one blueprint, roughly ten minutes. Everything below is on free tiers.
+Current setup: **Vercel** (web) → **Render** (API) → **Supabase** (Postgres).
 
-## Render — database, API and web together
+## Do I need Redis?
 
-1. Sign in at [render.com](https://render.com) with GitHub.
-2. **New → Blueprint**, pick `priyadershi-antino/appointment_booking`.
-3. Render reads [`render.yaml`](render.yaml) and provisions three things: a Postgres
-   database, the API, and the web client. It wires `DATABASE_URL` in itself and generates
-   both JWT secrets. Click **Apply**.
-4. Wait for the first deploy. Two values could not be known in advance, because each
-   service needs the other's URL. Fill them in now:
+**No.** Leave `REDIS_URL` unset.
 
-   | Service | Variable | Value |
-   |---|---|---|
-   | `booking-api` | `FRONTEND_URL` | `https://booking-web-xxxx.onrender.com` |
-   | `booking-web` | `NEXT_PUBLIC_API_URL` | `https://booking-api-xxxx.onrender.com/api/v1` |
+Redis is an accelerator here, never a dependency. It backs slot holds and nothing else,
+and the booking write path never reads it — the guarantee against double booking is a
+PostgreSQL exclusion constraint, which is unaffected by Redis being absent, slow or
+offline. The test suite deletes `REDIS_URL` before every run specifically to keep that
+true, so "works without Redis" is a standing, enforced property rather than a claim.
 
-5. Redeploy both services. `NEXT_PUBLIC_API_URL` is compiled into the browser bundle, so
-   the web service needs a **rebuild**, not just a restart.
+If `REDIS_URL` is set but unreachable, `/ready` reports `"redis":"down"`. That is worse
+than not setting it at all: it looks like a fault, and it is not one. Delete the variable
+and it reads `"not configured"`, which is the correct state.
 
-6. Seed the demo data once — Render dashboard → `booking-api` → **Shell**:
-
-   ```bash
-   npm run db:seed --workspace=@booking/api
-   ```
-
-Then open the web URL. Sign in at `/login` with `admin@example.com` / `Demo@12345`.
-
-### What to expect on the free tier
-
-- Services sleep after 15 minutes idle. The first request after a pause takes ~30 seconds
-  while the container wakes. This looks like a hang; it is not.
-- Render's free Postgres is deleted after 30 days. For something longer-lived, create a
-  free database at [neon.tech](https://neon.tech), delete the `databases:` block from
-  `render.yaml`, and set `DATABASE_URL` on the API service to Neon's connection string.
-
-## Vercel for the web client instead
-
-Vercel suits Next.js better and does not sleep. The API still needs Render (or Railway,
-or Fly) because it is a long-running server with a database.
-
-1. Import the repo at [vercel.com](https://vercel.com).
-2. **Root Directory**: `apps/web`.
-3. **Build Command**: `cd ../.. && npm run build --workspace=@booking/shared && npm run build --workspace=@booking/web`
-4. **Environment**: `NEXT_PUBLIC_API_URL = https://<api>.onrender.com/api/v1`
-5. On the API service, set `FRONTEND_URL` to the Vercel URL so CORS allows it.
+Add Redis later only if you run several API instances and want slot holds shared between
+them. Nothing else changes.
 
 ---
 
-## The two settings that break deployments
+## Supabase → Render
 
-**`COOKIE_SAMESITE`.** The session is an httpOnly cookie. When the API and the web client
-sit on different domains — which they do on every free host — the browser silently drops a
-`lax` or `strict` cookie on a cross-site request. Login appears to succeed and then every
-subsequent request is unauthenticated. `render.yaml` sets `COOKIE_SAMESITE=none` with
-`COOKIE_SECURE=true`; both are required together and the API refuses to start otherwise.
-Keep `lax` only if the API and web share an origin behind one proxy.
+Supabase offers three connection strings, and the choice matters more than it looks.
 
-**`FRONTEND_URL`.** This is the CORS allowlist. If it does not exactly match the origin the
-browser is on — scheme included, no trailing slash — every API call fails in the browser
-while working fine from curl.
+| Supabase calls it | Port | Use it for |
+|---|---|---|
+| Direct connection | 5432 | **IPv6 only.** Render cannot reach it — avoid |
+| Session pooler | 5432 | **Use this.** IPv4, supports DDL, so migrations work |
+| Transaction pooler | 6543 | Fine for queries, **cannot run migrations** |
 
-## Required environment
+Find them under **Project Settings → Database → Connection string**.
 
-**API**
+### The simple setup
 
-| Variable | Notes |
+Use the **Session pooler** for everything. It is IPv4-reachable and supports the prepared
+statements and session state that DDL needs, so one variable covers both runtime and
+migrations:
+
+```
+DATABASE_URL=postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+### The high-traffic setup
+
+If you later move runtime traffic onto the transaction pooler for connection efficiency,
+migrations must keep using a connection that can run DDL:
+
+```
+DATABASE_URL=postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&sslmode=require
+DIRECT_DATABASE_URL=postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+The Prisma CLI uses `DIRECT_DATABASE_URL` when present; the running app always uses
+`DATABASE_URL`.
+
+> `sslmode=require` is not optional — Supabase refuses plaintext connections. A missing
+> `sslmode` is one of the two most common causes of a database that reports `down` with
+> no obvious reason. Check `/ready`, which now names the failure.
+
+### One extension is required
+
+The overlap guard needs `btree_gist`. The migration creates it, but the role must be
+allowed to. If `migrate deploy` fails on the extension, run this once in the Supabase SQL
+editor and redeploy:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+```
+
+---
+
+## Render — API service
+
+**Environment**
+
+| Variable | Value |
 |---|---|
-| `DATABASE_URL` | PostgreSQL 16+ with `btree_gist` available |
-| `JWT_ACCESS_SECRET` | 32+ chars |
-| `JWT_REFRESH_SECRET` | 32+ chars, must differ from the access secret |
-| `FRONTEND_URL` | CORS allowlist; exact origin |
-| `COOKIE_SECURE` | `true` in production — the app refuses to start otherwise |
-| `COOKIE_SAMESITE` | `none` for split domains |
-| `REDIS_URL` | Optional. Slot holds only; correctness never depends on it |
+| `DATABASE_URL` | Supabase session pooler string, with `?sslmode=require` |
+| `JWT_ACCESS_SECRET` | 32+ random characters |
+| `JWT_REFRESH_SECRET` | 32+ random characters, **different from the access secret** |
+| `FRONTEND_URL` | `https://appointment-booking-web-black.vercel.app` |
+| `COOKIE_SECURE` | `true` |
+| `COOKIE_SAMESITE` | `lax` — see below |
+| `NODE_VERSION` | `22` |
+| `REDIS_URL` | **remove it** |
 
-**Web**
+**Build command**
 
-| Variable | Notes |
+```bash
+npm ci && \
+npm run build --workspace=@booking/shared && \
+npm run db:generate --workspace=@booking/api && \
+npm run build --workspace=@booking/api
+```
+
+The Prisma client is generated as TypeScript, so it must be generated *before* the
+TypeScript build, not after.
+
+**Start command**
+
+```bash
+npm run db:migrate:deploy --workspace=@booking/api && npm run start --workspace=@booking/api
+```
+
+`migrate deploy` only applies pending migrations and never resets, so it is safe on every
+boot — and it is what installs the exclusion constraint that prevents double booking.
+
+**Seed once**, from the Render shell:
+
+```bash
+npm run db:seed --workspace=@booking/api
+```
+
+---
+
+## Vercel — web app
+
+| Variable | Value |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | Baked in at build time — changing it needs a rebuild |
+| `API_PROXY_TARGET` | `https://appointment-booking-q4j2.onrender.com` |
+| `NEXT_PUBLIC_API_URL` | `/api/v1` — relative, deliberately |
+| `INTERNAL_API_URL` | `https://appointment-booking-q4j2.onrender.com/api/v1` |
 
-## Migrations
+**Build command**
 
-`startCommand` runs `prisma migrate deploy` on every boot. It only applies pending
-migrations and never resets, so restarts are safe.
+```bash
+cd ../.. && npm run build --workspace=@booking/shared && npm run build --workspace=@booking/web
+```
+
+with **Root Directory** set to `apps/web`.
+
+### Why `NEXT_PUBLIC_API_URL` is relative
+
+The browser talks only to the Vercel origin, and Next proxies `/api/v1` through to Render
+server-side. That keeps the session cookie **first-party**, which is the only arrangement
+that works everywhere: a cookie set by `onrender.com` on a page served from
+`vercel.app` is a third-party cookie, blocked outright by Safari and by default in
+Chrome. Login would appear to succeed and every request after it would be
+unauthenticated.
+
+It also removes CORS from the picture entirely, and means `COOKIE_SAMESITE=lax` is
+correct — `none` is only needed if you deliberately point the browser straight at the API
+domain.
+
+---
+
+## Diagnosing
+
+```bash
+curl https://appointment-booking-q4j2.onrender.com/ready
+```
+
+- `{"ready":true,"checks":{"database":"up","redis":"not configured"}}` — correct.
+- `"database":"down"` — the response now includes `databaseError` naming the cause, with
+  the password stripped. Usually a missing `sslmode=require`, the IPv6-only direct
+  connection, or a wrong password.
+- `"redis":"down"` — `REDIS_URL` is set but unreachable. Remove it.
+
+A 500 from `/api/v1/services` while `/health` returns 200 means the process is alive but
+cannot reach Postgres — `/health` is deliberately dependency-free so a database blip does
+not cause an orchestrator to kill an otherwise healthy instance.
 
 **Never run `prisma db push` against a deployed database.** It drops the `EXCLUDE`
 constraint that prevents double booking, silently and with no error.
+
+---
+
+## Free-tier notes
+
+Render free services sleep after 15 minutes idle; the first request after a pause takes
+around 30 seconds while the container wakes. That looks like a hang and is not one.
+Vercel does not sleep, so the web app stays fast and the API is what lags on first hit.

@@ -55,13 +55,36 @@ export async function disconnectDatabase(): Promise<void> {
 }
 
 /** Cheap liveness probe used by the readiness endpoint. */
-export async function databaseHealthy(): Promise<boolean> {
+export interface DatabaseHealth {
+  healthy: boolean;
+  /** Safe to show an operator: the failure reason with any password stripped. */
+  reason?: string;
+}
+
+/**
+ * Liveness probe for the database.
+ *
+ * Returns WHY it failed, not just that it did. A readiness endpoint that says only
+ * "down" turns a five-second fix — wrong host, missing sslmode, unreachable pooler —
+ * into an afternoon of guessing, because the deployment logs are the only other clue
+ * and they are behind someone else's dashboard.
+ */
+export async function databaseHealthy(): Promise<DatabaseHealth> {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    return true;
+    return { healthy: true };
   } catch (error) {
     logger.error({ err: error }, 'Database health check failed');
-    return false;
+
+    const raw = error instanceof Error ? error.message : String(error);
+    // Connection strings appear verbatim in some driver errors; never echo a password.
+    const reason = raw
+      .replace(/:\/\/[^@\s]*@/g, '://***@')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 300);
+
+    return { healthy: false, reason };
   }
 }
 

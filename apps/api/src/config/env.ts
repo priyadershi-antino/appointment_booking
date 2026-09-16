@@ -23,6 +23,12 @@ const envSchema = z
     API_PREFIX: z.string().default('/api/v1'),
 
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+    /**
+     * Optional. Only needed when DATABASE_URL points at a transaction-mode pooler
+     * (Supabase, Neon), which cannot run the DDL that migrations require. Used by the
+     * Prisma CLI for migrate/seed; the runtime always uses DATABASE_URL.
+     */
+    DIRECT_DATABASE_URL: z.string().optional(),
 
     /**
      * Optional throughout. Redis accelerates slot holds and backs the rate limiter, but
