@@ -2,6 +2,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client.js';
 import { env, isDevelopment } from '../config/env.js';
 import { logger } from './logger.js';
+import { describeDatabaseError } from './db-error.js';
 
 /**
  * The pg driver adapter is a deliberate choice, not a default.
@@ -46,8 +47,13 @@ if (isDevelopment) {
 }
 
 export async function connectDatabase(): Promise<void> {
-  await prisma.$connect();
-  logger.info('Database connected');
+  try {
+    await prisma.$connect();
+    logger.info('Database connected');
+  } catch (error) {
+    logger.fatal({ reason: describeDatabaseError(error) }, 'Could not connect to the database');
+    throw error;
+  }
 }
 
 export async function disconnectDatabase(): Promise<void> {
@@ -75,16 +81,7 @@ export async function databaseHealthy(): Promise<DatabaseHealth> {
     return { healthy: true };
   } catch (error) {
     logger.error({ err: error }, 'Database health check failed');
-
-    const raw = error instanceof Error ? error.message : String(error);
-    // Connection strings appear verbatim in some driver errors; never echo a password.
-    const reason = raw
-      .replace(/:\/\/[^@\s]*@/g, '://***@')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 300);
-
-    return { healthy: false, reason };
+    return { healthy: false, reason: describeDatabaseError(error) };
   }
 }
 
