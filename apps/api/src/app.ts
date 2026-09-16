@@ -14,6 +14,7 @@ import { globalLimiter } from './middleware/rate-limit.js';
 import { ok } from './lib/http.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { apiRouter } from './modules/api.routes.js';
+import { adminRouter } from './modules/admin.routes.js';
 
 export function createApp(): Application {
   const app = express();
@@ -95,6 +96,8 @@ export function createApp(): Application {
 
   app.use(env.API_PREFIX, globalLimiter);
   app.use(`${env.API_PREFIX}/auth`, authRouter);
+  // Admin CRUD is mounted first so its routes win where paths overlap the public ones.
+  app.use(`${env.API_PREFIX}/admin`, adminRouter);
   app.use(env.API_PREFIX, apiRouter);
 
   app.use(notFoundHandler);

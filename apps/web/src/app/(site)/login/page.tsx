@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiRequestError } from '@/lib/api';
+import { useSession } from '@/components/session';
 import { ErrorState } from '@/components/ui';
 
 /**
@@ -11,6 +12,7 @@ import { ErrorState } from '@/components/ui';
  */
 export default function LoginPage() {
   const router = useRouter();
+  const { refresh } = useSession();
   const [email, setEmail] = useState('admin@example.com');
   const [password, setPassword] = useState('Demo@12345');
   const [error, setError] = useState<string | null>(null);
@@ -22,8 +24,11 @@ export default function LoginPage() {
     setError(null);
     try {
       await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
-      router.push('/dashboard');
-      router.refresh();
+      // The cookie is set, but SessionProvider only reads it on mount. Without this the
+      // admin layout still believes it is anonymous and shows the sign-in prompt until
+      // the user reloads by hand.
+      await refresh();
+      router.replace('/dashboard');
     } catch (caught) {
       setError(
         caught instanceof ApiRequestError ? caught.error.message : 'Could not sign you in.',

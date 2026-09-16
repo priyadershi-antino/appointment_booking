@@ -12,19 +12,34 @@ import {
   LogOut,
   Menu,
   Stethoscope,
+  Users,
   X,
 } from 'lucide-react';
 import { useSession } from '@/components/session';
 import { EmptyState } from '@/components/ui';
 import { ThemeToggle } from '@/components/theme';
 
-const NAV = [
+/**
+ * Navigation is filtered by capability, not by role name.
+ *
+ * This is presentation only — hiding a link is a courtesy, never a control. Every route
+ * behind these links is guarded server-side by the same capability, so a provider who
+ * types /services directly still gets the data their role permits and nothing more.
+ */
+const NAV: { href: string; label: string; icon: typeof LayoutDashboard; permission?: string }[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/calendar', label: 'Calendar', icon: CalendarRange },
   { href: '/appointments', label: 'Appointments', icon: ClipboardList },
-  { href: '/availability', label: 'Availability', icon: Clock },
-  { href: '/services', label: 'Services', icon: Stethoscope },
+  { href: '/availability', label: 'Availability', icon: Clock, permission: 'availability.manage' },
+  { href: '/services', label: 'Services', icon: Stethoscope, permission: 'services.create' },
+  { href: '/providers', label: 'Team', icon: Users, permission: 'providers.read' },
 ];
+
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN: 'Administrator',
+  PROVIDER: 'Practitioner',
+  CUSTOMER: 'Customer',
+};
 
 /**
  * Admin console shell.
@@ -34,7 +49,7 @@ const NAV = [
  * before being told to sign in.
  */
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, status, signOut } = useSession();
+  const { user, status, signOut, can } = useSession();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -75,7 +90,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </div>
 
       <nav className="flex-1 space-y-0.5 px-3 py-2">
-        {NAV.map((item) => {
+        {NAV.filter((item) => !item.permission || can(item.permission)).map((item) => {
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
           return (
@@ -100,8 +115,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{user?.name}</p>
-            <p className="truncate text-xs capitalize text-[var(--color-ink-subtle)]">
-              {user?.role.toLowerCase()}
+            <p className="truncate text-xs text-[var(--color-ink-subtle)]">
+              {ROLE_LABEL[user?.role ?? ''] ?? user?.role}
             </p>
           </div>
         </div>
