@@ -23,6 +23,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/dashboard" className="btn-ghost">
                 Dashboard
               </Link>
+              <Link href="/login" className="btn-secondary">
+                Sign in
+              </Link>
             </nav>
           </div>
         </header>

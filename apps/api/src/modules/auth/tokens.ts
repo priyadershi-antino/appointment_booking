@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import type { CookieOptions, Response } from 'express';
 import { type UserRole } from '@booking/shared';
-import { env, isProduction } from '../../config/env.js';
+import { env } from '../../config/env.js';
 
 export const ACCESS_COOKIE = 'booking_access';
 export const REFRESH_COOKIE = 'booking_refresh';
@@ -64,9 +64,9 @@ function baseCookieOptions(): CookieOptions {
   return {
     httpOnly: true,
     secure: env.COOKIE_SECURE,
-    // `lax` still sends the cookie on top-level navigation, which the booking-management
-    // links in confirmation emails rely on, while blocking cross-site POSTs.
-    sameSite: isProduction ? 'strict' : 'lax',
+    // Configurable because it depends on deployment shape, not on environment name:
+    // same-origin deployments want `lax`, split api/web domains require `none`.
+    sameSite: env.COOKIE_SAMESITE,
     path: '/',
     ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
   };

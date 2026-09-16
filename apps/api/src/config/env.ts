@@ -38,6 +38,14 @@ const envSchema = z
 
     COOKIE_SECURE: booleanish.default(false),
     COOKIE_DOMAIN: z.string().optional(),
+    /**
+     * Must be `none` when the web client is served from a different origin to the API,
+     * which is the normal case on hosted deployments (api.example.com vs app.example.com).
+     * Browsers drop a `strict` or `lax` cookie on a cross-site XHR, so login would appear
+     * to succeed and then every subsequent request would be unauthenticated.
+     * `none` additionally requires COOKIE_SECURE=true.
+     */
+    COOKIE_SAMESITE: z.enum(['strict', 'lax', 'none']).default('lax'),
 
     FRONTEND_URL: z.string().url().default('http://localhost:3000'),
     /** Comma-separated list; falls back to FRONTEND_URL when unset. */
@@ -67,6 +75,13 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['COOKIE_SECURE'],
         message: 'COOKIE_SECURE must be true in production',
+      });
+    }
+    if (value.COOKIE_SAMESITE === 'none' && !value.COOKIE_SECURE) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['COOKIE_SAMESITE'],
+        message: 'COOKIE_SAMESITE=none requires COOKIE_SECURE=true',
       });
     }
     if (value.JWT_ACCESS_SECRET === value.JWT_REFRESH_SECRET) {

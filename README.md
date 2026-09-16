@@ -41,6 +41,9 @@ npm run db:seed       # realistic demo data
 npm run dev           # API on :4000, web on :3000
 ```
 
+**Deploying?** See [DEPLOY.md](DEPLOY.md) — a Render blueprint deploys the database, API
+and web client together on free tiers.
+
 ## Demo accounts
 
 Password for every account: **`Demo@12345`**
@@ -51,8 +54,8 @@ Password for every account: **`Demo@12345`**
 | Provider | `provider@example.com` |
 | Customer | `customer@example.com` |
 
-Guest booking needs no account at all — book from the home page and manage the appointment
-through the token link in the confirmation.
+Sign in at `/login`. Guest booking needs no account at all — book from the home page and
+manage the appointment through the token link in the confirmation.
 
 ## Scripts
 
