@@ -1,26 +1,12 @@
-# Render blueprint — deploys the database, API and web client in one go.
+# Render blueprint — deploys the API only.
 #
-# In Render: New > Blueprint > connect this repo. Render reads this file, provisions all
-# three services, wires the database URL in automatically, and generates the JWT secrets.
+# The web client lives on Vercel and the database on Neon (see DEPLOY.md), so this
+# blueprint provisions just the `booking-api` service rather than a full stack. In
+# Render: New > Blueprint > connect this repo. Render reads this file and prompts for the
+# `sync: false` values below (DATABASE_URL, FRONTEND_URL) during setup.
 #
-# Two values cannot be filled in until the services exist, because each needs the other's
-# URL. After the first deploy, set them and redeploy both:
-#   api  ->  FRONTEND_URL       = https://<your-web-service>.onrender.com
-#   web  ->  NEXT_PUBLIC_API_URL = https://<your-api-service>.onrender.com/api/v1
-#
-# Free-tier notes: services sleep after 15 minutes idle, so the first request after a
-# pause takes ~30 seconds to wake. Render's free Postgres expires after 30 days — for
-# something longer-lived, create a free Neon database instead and paste its connection
-# string into DATABASE_URL rather than using the `databases:` block below.
-
-databases:
-  - name: booking-db
-    databaseName: booking
-    user: booking
-    plan: free
-    # Must match the services below. A database in another region means every query
-    # crosses a continent, and free-tier cross-region access is not guaranteed.
-    region: singapore
+# Free-tier note: the service sleeps after 15 minutes idle, so the first request after a
+# pause takes ~30 seconds to wake.
 
 # Pull-request previews are deliberately off.
 #
@@ -37,7 +23,9 @@ services:
     name: booking-api
     runtime: node
     plan: free
-    region: singapore
+    # Ohio, to sit next to the Neon database (us-east-2) rather than cross the Pacific on
+    # every query. Change this if your Neon project is in a different region.
+    region: ohio
     # Redeploy on every push to the tracked branch. This is the setting that matters for
     # "does it deploy when I push" — previews above are a separate thing entirely.
     autoDeploy: true
@@ -60,46 +48,23 @@ services:
         value: '22'
       - key: NODE_ENV
         value: production
+      # Neon connection string (Project -> Connection Details -> pooled connection).
+      # Must include ?sslmode=require — Neon refuses plaintext connections.
       - key: DATABASE_URL
-        fromDatabase:
-          name: booking-db
-          property: connectionString
+        sync: false
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: COOKIE_SECURE
         value: 'true'
-      # The web client is on a different origin, so the session cookie must be
-      # cross-site or the browser will silently drop it after login.
+      # Vercel proxies /api/v1 through to this service same-origin (see DEPLOY.md), so the
+      # session cookie is first-party and `lax` is correct. Only use `none` if the browser
+      # is ever pointed directly at this API's own domain.
       - key: COOKIE_SAMESITE
-        value: none
+        value: lax
       - key: LOG_LEVEL
         value: info
-      # Set this to the web service URL after the first deploy — it is the CORS allowlist.
+      # The Vercel production domain — it is the CORS allowlist.
       - key: FRONTEND_URL
-        sync: false
-
-  # ── Web ────────────────────────────────────────────────────────────────────
-  - type: web
-    name: booking-web
-    runtime: node
-    plan: free
-    region: singapore
-    autoDeploy: true
-    buildCommand: >-
-      npm ci &&
-      npm run build --workspace=@booking/shared &&
-      npm run build --workspace=@booking/web
-    # `next start` binds $PORT, which Render assigns and then health-checks. Passing an
-    # explicit -p here would bind the wrong port and the deploy would be marked failed.
-    startCommand: npm run start --workspace=@booking/web
-    envVars:
-      - key: NODE_VERSION
-        value: '22'
-      - key: NODE_ENV
-        value: production
-      # Set this to the API service URL after the first deploy. It is baked into the
-      # client bundle at build time, so changing it requires a rebuild, not just a restart.
-      - key: NEXT_PUBLIC_API_URL
         sync: false
