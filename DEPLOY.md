@@ -168,6 +168,33 @@ constraint that prevents double booking, silently and with no error.
 
 ---
 
+## Auto-deploy vs PR previews
+
+Two separate Render features that are easy to conflate.
+
+**Auto-Deploy** is the one that rebuilds when you push. It lives under
+**Settings → Build & Deploy → Auto-Deploy** and is on by default for a GitHub-connected
+service, so `git push origin main` already triggers a build and redeploy. It is pinned to
+`autoDeploy: true` in the blueprint so it stays explicit rather than implied.
+
+**Pull Request Previews** are unrelated to pushing to main. They spin up a *temporary
+copy* of the service for each open PR, so you can click a link and test a branch before
+merging, then tear it down when the PR closes. Nothing about them affects your main
+deploy.
+
+They are switched **off** here, on purpose:
+
+> The API's start command runs `prisma migrate deploy` on every boot. A preview instance
+> inherits this service's environment, including `DATABASE_URL`. So opening a PR that adds
+> a migration would apply that migration to the **real Supabase database** as soon as the
+> preview booted — before anyone reviewed the PR. Worse, a preview of a *reverted* branch
+> could apply an older schema.
+
+Previews become genuinely useful once each one gets its own throwaway database. Render's
+**Preview Environments** do exactly that — they clone a group of services, database
+included — but that needs a paid plan and the database defined in the blueprint rather
+than hosted on Supabase. Until then, off is the correct setting.
+
 ## Free-tier notes
 
 Render free services sleep after 15 minutes idle; the first request after a pause takes

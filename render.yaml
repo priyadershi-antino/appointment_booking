@@ -22,6 +22,15 @@ databases:
     # crosses a continent, and free-tier cross-region access is not guaranteed.
     region: singapore
 
+# Pull-request previews are deliberately off.
+#
+# A preview instance inherits this service's environment, and the API's start command
+# runs `prisma migrate deploy` on every boot. With DATABASE_URL pointing at the real
+# database, opening a PR that adds a migration would apply it to production data before
+# anyone reviewed the PR. Previews are only safe once each one gets its own database.
+previews:
+  generation: off
+
 services:
   # ── API ────────────────────────────────────────────────────────────────────
   - type: web
@@ -29,6 +38,9 @@ services:
     runtime: node
     plan: free
     region: singapore
+    # Redeploy on every push to the tracked branch. This is the setting that matters for
+    # "does it deploy when I push" — previews above are a separate thing entirely.
+    autoDeploy: true
     # The Prisma client is generated as TypeScript, so it must be generated BEFORE the
     # TypeScript build rather than after it.
     buildCommand: >-
@@ -74,6 +86,7 @@ services:
     runtime: node
     plan: free
     region: singapore
+    autoDeploy: true
     buildCommand: >-
       npm ci &&
       npm run build --workspace=@booking/shared &&
