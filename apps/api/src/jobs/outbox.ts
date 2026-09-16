@@ -2,8 +2,8 @@ import { env } from '../config/env.js';
 import { prisma } from '../lib/prisma.js';
 import { childLogger } from '../lib/logger.js';
 import { clock } from '../lib/clock.js';
-import { formatLocal } from '../domain/time/zone.js';
 import { getEmailProvider } from '../integrations/email/index.js';
+import { buildAppointmentEmail } from '../integrations/email/templates.js';
 
 const log = childLogger('outbox');
 
@@ -28,32 +28,9 @@ const BATCH_SIZE = 20;
 interface Claimed {
   id: string;
   eventType: string;
-  payload: { appointmentId?: string };
+  payload: { appointmentId?: string; manageToken?: string; previousStartsAt?: string };
   attempts: number;
 }
-
-const EVENT_COPY: Record<string, { subject: string; lead: string }> = {
-  BOOKING_CONFIRMED: {
-    subject: 'Your appointment is confirmed',
-    lead: 'Your appointment is confirmed.',
-  },
-  BOOKING_CREATED: {
-    subject: 'We have received your booking',
-    lead: 'We have received your booking and it is awaiting confirmation.',
-  },
-  BOOKING_CANCELLED: {
-    subject: 'Your appointment has been cancelled',
-    lead: 'Your appointment has been cancelled.',
-  },
-  BOOKING_RESCHEDULED: {
-    subject: 'Your appointment has moved',
-    lead: 'Your appointment has been moved to a new time.',
-  },
-  APPOINTMENT_REMINDER: {
-    subject: 'Reminder: your appointment is coming up',
-    lead: 'This is a reminder about your upcoming appointment.',
-  },
-};
 
 async function deliver(event: Claimed): Promise<void> {
   const appointmentId = event.payload?.appointmentId;
@@ -61,62 +38,47 @@ async function deliver(event: Claimed): Promise<void> {
 
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
-    include: { customer: { select: { name: true, email: true } } },
+    include: {
+      customer: { select: { name: true, email: true } },
+      service: { include: { cancellationPolicy: { select: { description: true } } } },
+    },
   });
+
   if (!appointment) {
-    // The appointment is gone; there is nothing meaningful to send and retrying will
-    // never help, so treat it as delivered rather than looping to the dead letter queue.
+    // The appointment is gone; retrying will never help, so treat this as delivered
+    // rather than looping it all the way to the dead-letter queue.
     log.warn({ eventId: event.id, appointmentId }, 'Appointment missing, skipping notification');
     return;
   }
 
-  const copy = EVENT_COPY[event.eventType] ?? {
-    subject: 'Appointment update',
-    lead: 'There is an update to your appointment.',
-  };
-
-  const zone = appointment.timezone;
-  const when = `${formatLocal(appointment.startsAt, zone, 'EEEE d MMMM yyyy')} at ${formatLocal(
-    appointment.startsAt,
-    zone,
-    'HH:mm',
-  )} (${zone})`;
-
-  const lines = [
-    `Hello ${appointment.customer.name},`,
-    '',
-    copy.lead,
-    '',
-    `Service:   ${appointment.serviceName}`,
-    `With:      ${appointment.providerName}`,
-    `When:      ${when}`,
-    `Duration:  ${appointment.durationMin} minutes`,
-    `Where:     ${appointment.locationDetail ?? 'Online'}`,
-    `Reference: ${appointment.code}`,
-  ];
-
-  if (appointment.status === 'CONFIRMED') {
-    lines.push('', `Manage your booking: ${env.FRONTEND_URL}/manage/<your link>`);
-  }
-
-  lines.push('', 'Meridian Clinic');
-
-  const message = {
-    to: appointment.customer.email,
-    subject: `${copy.subject} — ${appointment.serviceName}`,
-    text: lines.join('\n'),
-  };
+  const message = buildAppointmentEmail(event.eventType as Parameters<typeof buildAppointmentEmail>[0], {
+    customerName: appointment.customer.name,
+    customerEmail: appointment.customer.email,
+    serviceName: appointment.serviceName,
+    providerName: appointment.providerName,
+    startsAt: appointment.startsAt,
+    endsAt: appointment.endsAt,
+    timezone: appointment.timezone,
+    durationMin: appointment.durationMin,
+    priceMinor: appointment.priceMinor,
+    currency: appointment.currency,
+    locationDetail: appointment.locationDetail,
+    code: appointment.code,
+    manageToken: event.payload.manageToken ?? null,
+    cancellationPolicy: appointment.service.cancellationPolicy?.description ?? null,
+    previousStartsAt: event.payload.previousStartsAt
+      ? new Date(event.payload.previousStartsAt)
+      : null,
+  });
 
   await getEmailProvider().send(message);
 
-  // Logged for the admin notification history, and so a delivery failure is visible
-  // rather than only present in process logs.
+  // Logged for the admin notification history, so a delivery problem is visible in the
+  // product rather than only in process logs.
   await prisma.notificationLog.create({
     data: {
       appointmentId: appointment.id,
-      event: event.eventType.startsWith('BOOKING_') || event.eventType.startsWith('APPOINTMENT_')
-        ? (event.eventType as 'BOOKING_CONFIRMED')
-        : 'BOOKING_CREATED',
+      event: event.eventType as 'BOOKING_CONFIRMED',
       channel: 'EMAIL',
       recipientType: 'CUSTOMER',
       recipient: appointment.customer.email,
@@ -161,7 +123,13 @@ export async function drainOutboxOnce(): Promise<number> {
       await deliver(event);
       await prisma.outboxEvent.update({
         where: { id: event.id },
-        data: { processedAt: clock.now(), lastError: null },
+        data: {
+          processedAt: clock.now(),
+          lastError: null,
+          // The manage token has been delivered; there is no reason to keep a plaintext
+          // copy of it sitting in the database afterwards.
+          payload: { appointmentId: event.payload.appointmentId },
+        },
       });
       delivered += 1;
     } catch (error) {

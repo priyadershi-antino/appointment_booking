@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   Stethoscope,
+  UserPlus,
   Users,
   X,
 } from 'lucide-react';
@@ -33,6 +34,7 @@ const NAV: { href: string; label: string; icon: typeof LayoutDashboard; permissi
   { href: '/availability', label: 'Availability', icon: Clock, permission: 'availability.manage' },
   { href: '/services', label: 'Services', icon: Stethoscope, permission: 'services.create' },
   { href: '/providers', label: 'Team', icon: Users, permission: 'providers.read' },
+  { href: '/onboarding', label: 'Onboarding', icon: UserPlus, permission: 'settings.manage' },
 ];
 
 const ROLE_LABEL: Record<string, string> = {

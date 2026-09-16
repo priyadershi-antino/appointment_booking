@@ -16,6 +16,8 @@ export default defineConfig({
       forks: { singleFork: false },
     },
     setupFiles: ['./tests/setup.ts'],
+    /** Verifies the schema guarantee and empties the database once, before anything runs. */
+    globalSetup: ['./tests/global-setup.ts'],
     testTimeout: 20_000,
     hookTimeout: 60_000,
     coverage: {

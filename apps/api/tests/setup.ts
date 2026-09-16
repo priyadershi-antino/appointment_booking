@@ -1,3 +1,6 @@
+import { afterAll } from 'vitest';
+import { resolveTestDatabaseUrl } from './helpers/test-database-url.js';
+
 /**
  * Test bootstrap.
  *
@@ -15,5 +18,21 @@ process.env.COOKIE_SECURE = 'false';
 
 delete process.env.REDIS_URL;
 
-process.env.DATABASE_URL ??=
-  'postgresql://postgres:postgres@localhost:5432/booking_test?schema=public';
+/**
+ * Rate limits are a protection measure, not behaviour under test. Left at their real
+ * values, the fiftieth request in a file would start returning 429 and the failure would
+ * look like a bug in whatever test happened to run last.
+ */
+process.env.RATE_LIMIT_MAX = '100000';
+
+process.env.DATABASE_URL = resolveTestDatabaseUrl();
+
+/**
+ * Close the pool when a file finishes, or Vitest hangs waiting on open handles.
+ * Imported dynamically: a static import would be hoisted above the assignments above,
+ * and the Prisma client reads DATABASE_URL the moment it is constructed.
+ */
+afterAll(async () => {
+  const { prisma } = await import('../src/lib/prisma.js');
+  await prisma.$disconnect();
+});

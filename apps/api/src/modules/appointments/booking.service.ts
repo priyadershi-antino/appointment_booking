@@ -273,11 +273,15 @@ export async function createBooking(input: CreateBookingInput) {
 
         // Side effects go into the outbox inside the same transaction. A committed
         // booking therefore always eventually notifies, and a rolled-back one never does.
+        // The plain manage token is carried here because only the hash is stored on the
+        // appointment — the email cannot link to a booking it has no way to address.
+        // The worker strips it from the row once the message is delivered, so it does
+        // not linger in the database after it has served its purpose.
         await tx.outboxEvent.create({
           data: {
             eventType:
               status === AppointmentStatus.CONFIRMED ? 'BOOKING_CONFIRMED' : 'BOOKING_CREATED',
-            payload: { appointmentId: created.id },
+            payload: { appointmentId: created.id, manageToken: manage.token },
           },
         });
 
@@ -502,7 +506,14 @@ export async function rescheduleBooking(input: RescheduleInput) {
       });
 
       await tx.outboxEvent.create({
-        data: { eventType: 'BOOKING_RESCHEDULED', payload: { appointmentId: successor.id } },
+        data: {
+          eventType: 'BOOKING_RESCHEDULED',
+          payload: {
+            appointmentId: successor.id,
+            manageToken: manage.token,
+            previousStartsAt: original.startsAt.toISOString(),
+          },
+        },
       });
 
       return { appointment: successor, manageToken: manage.token };

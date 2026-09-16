@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import nodemailer, { type Transporter } from 'nodemailer';
 import { env } from '../../config/env.js';
 import { childLogger } from '../../lib/logger.js';
 
@@ -9,14 +10,16 @@ export interface EmailMessage {
   to: string;
   subject: string;
   text: string;
+  /** Optional rich body. Clients that cannot render it fall back to `text`. */
+  html?: string;
 }
 
 /**
  * Email transport, behind an interface.
  *
- * Nothing in the booking domain knows how mail is sent — it writes an outbox row and a
- * worker hands it to whichever provider is configured. Swapping the console provider for
- * Resend, SES or SendGrid later is a new file here plus one line in `createEmailProvider`;
+ * Nothing in the booking domain knows how mail is sent — a booking writes an outbox row
+ * inside its own transaction and a worker hands it to whichever provider is configured.
+ * Adding Resend, SES or Postmark later is a new class here and one line in the factory;
  * no booking code changes.
  */
 export interface EmailProvider {
@@ -24,7 +27,7 @@ export interface EmailProvider {
   send(message: EmailMessage): Promise<void>;
 }
 
-/** Prints the message. The default in development — zero setup, nothing leaves the machine. */
+/** Prints the message. Default in development — zero setup, nothing leaves the machine. */
 class ConsoleEmailProvider implements EmailProvider {
   readonly name = 'console';
 
@@ -36,10 +39,7 @@ class ConsoleEmailProvider implements EmailProvider {
   }
 }
 
-/**
- * Writes each message as a .eml file. Useful when you want to actually read what was sent,
- * including the management links, without wiring up a real mailbox.
- */
+/** Writes each message as a .eml file you can open in a mail client. */
 class FileEmailProvider implements EmailProvider {
   readonly name = 'file';
   private readonly directory = resolve(process.cwd(), env.MAIL_OUTPUT_DIR);
@@ -54,9 +54,9 @@ class FileEmailProvider implements EmailProvider {
       `From: ${env.EMAIL_FROM}`,
       `To: ${message.to}`,
       `Subject: ${message.subject}`,
-      'Content-Type: text/plain; charset=utf-8',
+      'Content-Type: text/html; charset=utf-8',
       '',
-      message.text,
+      message.html ?? message.text,
     ].join('\n');
 
     await writeFile(file, body, 'utf8');
@@ -64,11 +64,104 @@ class FileEmailProvider implements EmailProvider {
   }
 }
 
+/**
+ * Real delivery through any SMTP server — Gmail, SES, Mailgun, a corporate relay.
+ *
+ * The transport is created once and reused: SMTP connection setup costs a TLS handshake
+ * and several round trips, which is wasteful to repeat for every reminder in a batch.
+ */
+class SmtpEmailProvider implements EmailProvider {
+  readonly name = 'smtp';
+  private transporter: Transporter | null = null;
+
+  private transport(): Transporter {
+    if (this.transporter) return this.transporter;
+    this.transporter = nodemailer.createTransport({
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      secure: env.SMTP_SECURE,
+      ...(env.SMTP_USER
+        ? { auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD ?? '' } }
+        : {}),
+      pool: true,
+      maxConnections: 3,
+    });
+    return this.transporter;
+  }
+
+  async send(message: EmailMessage): Promise<void> {
+    const info = await this.transport().sendMail({
+      from: env.EMAIL_FROM,
+      to: message.to,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+    });
+    log.info({ to: message.to, messageId: info.messageId }, 'Email sent via SMTP');
+  }
+}
+
+/**
+ * Delivers to a throwaway Ethereal inbox and logs a preview URL.
+ *
+ * Ethereal accepts the message, renders it, and never forwards it anywhere — so this
+ * proves the whole path works, with a real SMTP handshake and a link you can open to see
+ * exactly what the customer would receive, without needing anyone's credentials.
+ */
+class EtherealEmailProvider implements EmailProvider {
+  readonly name = 'ethereal';
+  private transporter: Transporter | null = null;
+  private account: { user: string; pass: string } | null = null;
+
+  private async transport(): Promise<Transporter> {
+    if (this.transporter) return this.transporter;
+    const account = await nodemailer.createTestAccount();
+    this.account = { user: account.user, pass: account.pass };
+    this.transporter = nodemailer.createTransport({
+      host: account.smtp.host,
+      port: account.smtp.port,
+      secure: account.smtp.secure,
+      auth: { user: account.user, pass: account.pass },
+    });
+    log.info(
+      { inbox: 'https://ethereal.email/login', user: account.user, pass: account.pass },
+      'Ethereal test inbox ready — sign in with these to read every message sent',
+    );
+    return this.transporter;
+  }
+
+  async send(message: EmailMessage): Promise<void> {
+    const info = await (await this.transport()).sendMail({
+      from: env.EMAIL_FROM,
+      to: message.to,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+    });
+    const preview = nodemailer.getTestMessageUrl(info);
+    log.info({ to: message.to, preview, inbox: this.account?.user }, `Email preview: ${preview}`);
+  }
+}
+
 let provider: EmailProvider | null = null;
 
 export function getEmailProvider(): EmailProvider {
   if (provider) return provider;
-  provider = env.EMAIL_PROVIDER === 'file' ? new FileEmailProvider() : new ConsoleEmailProvider();
+
+  switch (env.EMAIL_PROVIDER) {
+    case 'smtp':
+      provider = new SmtpEmailProvider();
+      break;
+    case 'ethereal':
+      provider = new EtherealEmailProvider();
+      break;
+    case 'file':
+      provider = new FileEmailProvider();
+      break;
+    default:
+      provider = new ConsoleEmailProvider();
+  }
+
   log.info({ provider: provider.name }, 'Email provider ready');
   return provider;
 }

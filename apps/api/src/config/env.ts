@@ -51,9 +51,27 @@ const envSchema = z
     /** Comma-separated list; falls back to FRONTEND_URL when unset. */
     CORS_ORIGINS: z.string().optional(),
 
-    LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+    // `silent` is a real pino level and is what the test bootstrap sets; leaving it out
+    // of this enum made the whole suite exit 1 before a single test file could load.
+    LOG_LEVEL: z
+      .enum(['silent', 'fatal', 'error', 'warn', 'info', 'debug', 'trace'])
+      .default('info'),
 
-    EMAIL_PROVIDER: z.enum(['console', 'file']).default('console'),
+    /**
+     * console — print to the log (default; zero setup, nothing leaves the machine)
+     * file    — write .eml files you can open
+     * smtp    — deliver for real through any SMTP server
+     * ethereal — deliver to a throwaway inbox and log a preview URL. Needs no account
+     *           and no credentials, which makes it the honest way to demonstrate that
+     *           mail actually sends without asking anyone for a password.
+     */
+    EMAIL_PROVIDER: z.enum(['console', 'file', 'smtp', 'ethereal']).default('console'),
+    SMTP_HOST: z.string().optional(),
+    SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASSWORD: z.string().optional(),
+    /** True for port 465 (implicit TLS); false for 587 with STARTTLS. */
+    SMTP_SECURE: booleanish.default(false),
     EMAIL_FROM: z.string().default('Bookings <no-reply@example.com>'),
     /** Where the `file` email provider writes .eml files during development. */
     MAIL_OUTPUT_DIR: z.string().default('./tmp/mail'),
@@ -82,6 +100,13 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['COOKIE_SAMESITE'],
         message: 'COOKIE_SAMESITE=none requires COOKIE_SECURE=true',
+      });
+    }
+    if (value.EMAIL_PROVIDER === 'smtp' && !value.SMTP_HOST) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SMTP_HOST'],
+        message: 'SMTP_HOST is required when EMAIL_PROVIDER=smtp',
       });
     }
     if (value.JWT_ACCESS_SECRET === value.JWT_REFRESH_SECRET) {
