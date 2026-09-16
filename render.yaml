@@ -31,8 +31,12 @@ services:
     autoDeploy: true
     # The Prisma client is generated as TypeScript, so it must be generated BEFORE the
     # TypeScript build rather than after it.
+    #
+    # `--include=dev` is required: with NODE_ENV=production set (below), plain `npm ci`
+    # silently omits devDependencies — which is where typescript and every @types/* package
+    # live. Without it the build fails with TS7016 on every third-party import.
     buildCommand: >-
-      npm ci &&
+      npm ci --include=dev &&
       npm run build --workspace=@booking/shared &&
       npm run db:generate --workspace=@booking/api &&
       npm run build --workspace=@booking/api

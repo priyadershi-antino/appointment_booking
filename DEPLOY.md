@@ -90,7 +90,7 @@ CREATE EXTENSION IF NOT EXISTS btree_gist;
 **Build command**
 
 ```bash
-npm ci && \
+npm ci --include=dev && \
 npm run build --workspace=@booking/shared && \
 npm run db:generate --workspace=@booking/api && \
 npm run build --workspace=@booking/api
@@ -98,6 +98,10 @@ npm run build --workspace=@booking/api
 
 The Prisma client is generated as TypeScript, so it must be generated *before* the
 TypeScript build, not after.
+
+`--include=dev` matters: with `NODE_ENV=production` set, plain `npm ci` silently skips
+devDependencies — which is where `typescript` and every `@types/*` package live — and the
+build fails with `TS7016` on every third-party import (express, cors, jsonwebtoken, …).
 
 **Start command**
 
