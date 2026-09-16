@@ -176,11 +176,11 @@ export function BookingFlow({ service }: { service: ServiceSummary }) {
         <p className="mt-2 text-sm text-[var(--color-ink-muted)] max-w-2xl">{service.description}</p>
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-semibold">
           <span className="tabular-nums">{service.durationMin} minutes</span>
-          <span aria-hidden className="text-[var(--color-line-soft)]">
+          <span aria-hidden className="text-[var(--color-line)]">
             ·
           </span>
           <span className="tabular-nums">{formatMoney(service.priceMinor, service.currency)}</span>
-          <span aria-hidden className="text-[var(--color-line-soft)]">
+          <span aria-hidden className="text-[var(--color-line)]">
             ·
           </span>
           <span>{service.locationType === 'ONLINE' ? 'Online' : service.locationDetail}</span>
@@ -250,12 +250,12 @@ export function BookingFlow({ service }: { service: ServiceSummary }) {
                         aria-label={`${key}${available ? '' : ', no availability'}`}
                         onClick={() => setSelectedDate(key)}
                         className={[
-                          'h-10 text-sm font-semibold tabular-nums rounded-[var(--radius-sharp)] border transition-colors',
+                          'h-10 text-sm font-semibold tabular-nums rounded-[var(--radius-sm)] border transition-colors',
                           isSelected
                             ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-white'
                             : available
-                              ? 'bg-white border-[var(--color-line)] hover:bg-[var(--color-accent-soft)]'
-                              : 'bg-[var(--color-surface-sunken)] border-transparent text-[var(--color-ink-subtle)] cursor-not-allowed',
+                              ? 'bg-[var(--color-surface)] border-[var(--color-line-strong)] hover:bg-[var(--color-accent-soft)]'
+                              : 'bg-[var(--color-sunken)] border-transparent text-[var(--color-ink-subtle)] cursor-not-allowed',
                         ].join(' ')}
                       >
                         {Number(key.slice(8))}
@@ -337,10 +337,10 @@ export function BookingFlow({ service }: { service: ServiceSummary }) {
                         aria-pressed={chosen}
                         onClick={() => setSelectedSlot(slot)}
                         className={[
-                          'h-10 text-sm font-bold tabular-nums rounded-[var(--radius-sharp)] border transition-colors',
+                          'h-10 text-sm font-bold tabular-nums rounded-[var(--radius-sm)] border transition-colors',
                           chosen
                             ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-white'
-                            : 'bg-white border-[var(--color-line)] hover:bg-[var(--color-accent-soft)]',
+                            : 'bg-[var(--color-surface)] border-[var(--color-line-strong)] hover:bg-[var(--color-accent-soft)]',
                         ].join(' ')}
                       >
                         {formatTime(slot.startUtc, timezone)}
@@ -469,7 +469,7 @@ export function BookingFlow({ service }: { service: ServiceSummary }) {
             </dl>
 
             {service.cancellationPolicy ? (
-              <p className="mt-4 pt-4 border-t border-[var(--color-line-soft)] text-xs text-[var(--color-ink-muted)]">
+              <p className="mt-4 pt-4 border-t border-[var(--color-line)] text-xs text-[var(--color-ink-muted)]">
                 {service.cancellationPolicy.description}
               </p>
             ) : null}
@@ -492,7 +492,7 @@ function Confirmation({
   const { appointment } = result;
   return (
     <div className="mx-auto max-w-xl px-4 py-16 text-center">
-      <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-confirmed-soft)] text-[var(--color-confirmed)] text-2xl font-black">
+      <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-ok-soft)] text-[var(--color-ok)] text-2xl font-black">
         ✓
       </div>
       <h1 className="mt-5 text-3xl font-black tracking-tight">Appointment confirmed</h1>
@@ -506,7 +506,7 @@ function Confirmation({
           {formatDateLong(appointment.startsAt, timezone)}
         </p>
 
-        <dl className="mt-5 pt-5 border-t border-[var(--color-line-soft)] space-y-2 text-sm">
+        <dl className="mt-5 pt-5 border-t border-[var(--color-line)] space-y-2 text-sm">
           <div className="flex justify-between">
             <dt className="text-[var(--color-ink-subtle)]">Duration</dt>
             <dd className="font-semibold tabular-nums">{appointment.durationMin} minutes</dd>
@@ -528,9 +528,15 @@ function Confirmation({
         </dl>
       </div>
 
-      <p className="mt-6 text-sm text-[var(--color-ink-muted)]">
-        A confirmation has been sent to your email with a link to reschedule or cancel.
-      </p>
+      <div className="mt-6 flex flex-col items-center gap-3">
+        <a className="btn-primary" href={`/manage/${result.manageToken}`}>
+          Manage this appointment
+        </a>
+        <p className="text-sm text-[var(--color-ink-muted)]">
+          A confirmation has been sent to your email with the same link, so you can reschedule
+          or cancel later.
+        </p>
+      </div>
       {service.cancellationPolicy ? (
         <p className="mt-2 text-xs text-[var(--color-ink-subtle)]">
           {service.cancellationPolicy.description}

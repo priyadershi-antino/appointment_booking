@@ -3,9 +3,13 @@ import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { connectDatabase, disconnectDatabase } from './lib/prisma.js';
 import { disconnectRedis } from './lib/redis.js';
+import { startBackgroundJobs, stopBackgroundJobs } from './jobs/outbox.js';
 
 async function main(): Promise<void> {
   await connectDatabase();
+
+  // Drains the transactional outbox, releases expired holds, auto-completes past visits.
+  startBackgroundJobs();
 
   const app = createApp();
   const server = app.listen(env.PORT, () => {
@@ -32,6 +36,7 @@ async function main(): Promise<void> {
     }, 10_000);
     forceExit.unref();
 
+    stopBackgroundJobs();
     server.close(async () => {
       await Promise.allSettled([disconnectDatabase(), disconnectRedis()]);
       clearTimeout(forceExit);

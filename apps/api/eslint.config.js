@@ -61,6 +61,8 @@ export default tseslint.config(
       'src/lib/prisma.ts',
       'src/server.ts',
       'src/modules/auth/**',
+      // The mail transport timestamps filenames; that is not a booking rule.
+      'src/integrations/email/**',
       'prisma/**',
       '**/*.test.ts',
     ],

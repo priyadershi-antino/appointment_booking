@@ -1,104 +1,425 @@
 @import 'tailwindcss';
 
 /*
- * Design system — high-contrast and bold.
+ * Design system.
  *
- * Strong black-on-white typography, one vivid accent, flat surfaces with hard 1px
- * borders and almost no shadow, tight radii. The restraint is the point: colour is
- * reserved for the accent and for status, so when something IS coloured it means
- * something. Defined as tokens before any screen is built, so the UI cannot drift.
+ * Confident and modern: near-black ink on warm white, one vivid indigo accent, real
+ * typographic hierarchy, and depth used sparingly — a hairline border does most of the
+ * separation work, with shadow reserved for things that genuinely float (menus, dialogs,
+ * the sticky header once you scroll).
+ *
+ * Colour is rationed on purpose. The accent marks what is actionable or selected; status
+ * hues appear only on status. When everything is coloured, nothing reads as important.
  */
 @theme {
-  --color-ink: #0a0a0a;
-  --color-ink-muted: #52525b;
-  --color-ink-subtle: #8b8b94;
+  /* Ink ---------------------------------------------------------------- */
+  --color-ink: #0c0c0f;
+  --color-ink-strong: #000000;
+  --color-ink-muted: #5b5b66;
+  --color-ink-subtle: #8e8e9a;
+  --color-ink-inverse: #fafafa;
+
+  /* Surfaces ----------------------------------------------------------- */
   --color-surface: #ffffff;
-  --color-surface-sunken: #f6f6f7;
-  --color-line: #1f1f23;
-  --color-line-soft: #e4e4e7;
+  --color-canvas: #fbfbfc;
+  --color-sunken: #f4f4f6;
+  --color-raised: #ffffff;
+  --color-night: #111114;
+  --color-night-soft: #1b1b20;
 
+  /* Lines -------------------------------------------------------------- */
+  --color-line: #e6e6ea;
+  --color-line-strong: #d3d3da;
+  --color-line-ink: #18181d;
+
+  /* Accent ------------------------------------------------------------- */
   --color-accent: #4f2fe0;
-  --color-accent-hover: #3f21c4;
-  --color-accent-soft: #efeaff;
+  --color-accent-hover: #4325c4;
+  --color-accent-press: #3a1fab;
+  --color-accent-soft: #f0ecff;
+  --color-accent-ring: #c9bcff;
 
-  /* Status colours. Each pairs a saturated mark with a pale ground so badges stay
-     legible without shouting. */
-  --color-confirmed: #0b6b3a;
-  --color-confirmed-soft: #dff5e8;
-  --color-pending: #8a5a00;
-  --color-pending-soft: #fdf0d5;
-  --color-cancelled: #a01b2b;
-  --color-cancelled-soft: #fde7ea;
-  --color-completed: #1f4fa8;
-  --color-completed-soft: #e4edff;
-  --color-noshow: #52525b;
-  --color-noshow-soft: #ececef;
+  /* Status ------------------------------------------------------------- */
+  --color-ok: #0a6b3d;
+  --color-ok-soft: #e3f6ec;
+  --color-warn: #8a5300;
+  --color-warn-soft: #fdf0d9;
+  --color-danger: #a8112a;
+  --color-danger-soft: #fdeaed;
+  --color-info: #1d4ed8;
+  --color-info-soft: #e6edff;
+  --color-neutral: #55555f;
+  --color-neutral-soft: #eeeef1;
 
-  --radius-sharp: 4px;
-  --radius-base: 6px;
+  /* Radii — tight, so surfaces read as crisp rather than soft ----------- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Elevation — restrained; borders carry most separation --------------- */
+  --shadow-sm: 0 1px 2px rgb(12 12 15 / 0.05);
+  --shadow-md: 0 4px 12px -2px rgb(12 12 15 / 0.08), 0 2px 4px -2px rgb(12 12 15 / 0.04);
+  --shadow-lg: 0 16px 40px -8px rgb(12 12 15 / 0.16), 0 4px 12px -4px rgb(12 12 15 / 0.08);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Inter, Roboto, Helvetica, Arial,
+    sans-serif;
 }
 
 :root {
   color-scheme: light;
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * Dark theme.
+ *
+ * Only the token values change — every component keeps referring to the same
+ * semantic names, so nothing has to know which theme is active.
+ *
+ * Three states are supported: an explicit choice stamps data-theme on <html>, and
+ * with nothing stamped the system preference decides. The `:not([data-theme="light"])`
+ * guard is what lets an explicit light choice win over a dark OS setting.
+ *
+ * Surfaces lift rather than darken as they come forward (canvas is darkest, raised
+ * lightest), which is how depth reads correctly without shadows — shadows are nearly
+ * invisible on dark backgrounds.
+ * ────────────────────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-ink: #ececf1;
+    --color-ink-strong: #ffffff;
+    --color-ink-muted: #a0a0ad;
+    --color-ink-subtle: #75757f;
+    --color-ink-inverse: #0c0c0f;
+
+    --color-surface: #16161a;
+    --color-canvas: #0e0e11;
+    --color-sunken: #1c1c21;
+    --color-raised: #17171c;
+    --color-night: #0a0a0c;
+    --color-night-soft: #16161a;
+
+    --color-line: #2a2a31;
+    --color-line-strong: #3a3a43;
+    --color-line-ink: #ececf1;
+
+    /* Lifted and desaturated: the light-mode indigo vibrates against dark ground. */
+    --color-accent: #8d73ff;
+    --color-accent-hover: #9d86ff;
+    --color-accent-press: #7a5df5;
+    --color-accent-soft: #211a3d;
+    --color-accent-ring: #5b47a8;
+
+    --color-ok: #4ade80;
+    --color-ok-soft: #14301f;
+    --color-warn: #fbbf24;
+    --color-warn-soft: #33260a;
+    --color-danger: #fb7185;
+    --color-danger-soft: #3a1119;
+    --color-info: #7aa2ff;
+    --color-info-soft: #131f3d;
+    --color-neutral: #a0a0ad;
+    --color-neutral-soft: #24242b;
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.5);
+    --shadow-lg: 0 16px 40px -8px rgb(0 0 0 / 0.65);
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --color-ink: #ececf1;
+  --color-ink-strong: #ffffff;
+  --color-ink-muted: #a0a0ad;
+  --color-ink-subtle: #75757f;
+  --color-ink-inverse: #0c0c0f;
+
+  --color-surface: #16161a;
+  --color-canvas: #0e0e11;
+  --color-sunken: #1c1c21;
+  --color-raised: #17171c;
+  --color-night: #0a0a0c;
+  --color-night-soft: #16161a;
+
+  --color-line: #2a2a31;
+  --color-line-strong: #3a3a43;
+  --color-line-ink: #ececf1;
+
+  --color-accent: #8d73ff;
+  --color-accent-hover: #9d86ff;
+  --color-accent-press: #7a5df5;
+  --color-accent-soft: #211a3d;
+  --color-accent-ring: #5b47a8;
+
+  --color-ok: #4ade80;
+  --color-ok-soft: #14301f;
+  --color-warn: #fbbf24;
+  --color-warn-soft: #33260a;
+  --color-danger: #fb7185;
+  --color-danger-soft: #3a1119;
+  --color-info: #7aa2ff;
+  --color-info-soft: #131f3d;
+  --color-neutral: #a0a0ad;
+  --color-neutral-soft: #24242b;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 16px 40px -8px rgb(0 0 0 / 0.65);
+
+  color-scheme: dark;
+}
+
+/* Bare white backgrounds would punch holes in the dark theme, so the few components
+   that hard-code white are re-pointed at the surface token. */
+:root[data-theme='dark'] .bg-white,
+:root:not([data-theme='light']) .bg-white {
+  background-color: var(--color-raised);
+}
+
+
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  background: var(--color-surface);
+  background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Visible, unmistakable focus. Keyboard users get the same clarity as the rest. */
+/* Numerals in tables and time slots must line up column to column. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Focus is loud on purpose. Keyboard users get the same clarity as everyone else. */
 *:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: 3px;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+/* Scrollbars inside slot lists and tables, so they do not look like a native overflow. */
+.scroll-slim {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+.scroll-slim::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 99px;
+}
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-rise {
+  animation: rise 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-slide-in {
+  animation: slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @layer components {
+  /* Surfaces ---------------------------------------------------------- */
   .card {
-    @apply border border-[var(--color-line)] bg-white rounded-[var(--radius-base)];
+    background: var(--color-raised);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+  }
+  .card-flat {
+    background: var(--color-raised);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
+  }
+  .card-interactive {
+    background: var(--color-raised);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    transition:
+      box-shadow 0.18s ease,
+      border-color 0.18s ease,
+      transform 0.18s ease;
+  }
+  .card-interactive:hover {
+    border-color: var(--color-line-strong);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
   }
 
-  /* Tailwind v4 will not @apply a class defined in the same layer, so each button
-     variant spells out the shared base rather than composing from `.btn`. */
+  /* Buttons — Tailwind v4 will not @apply a class from the same layer, so
+     each variant restates the shared base rather than composing. --------- */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 h-10 text-sm font-semibold rounded-[var(--radius-sharp)] border transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 h-10 px-4 text-sm font-semibold
+           rounded-[var(--radius-sm)] border transition-all duration-150 select-none
+           disabled:opacity-45 disabled:pointer-events-none;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-4 h-10 text-sm font-semibold rounded-[var(--radius-sharp)] border transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
-    @apply bg-[var(--color-accent)] border-[var(--color-accent)] text-white
-           hover:bg-[var(--color-accent-hover)] hover:border-[var(--color-accent-hover)];
+    @apply inline-flex items-center justify-center gap-2 h-10 px-4 text-sm font-semibold
+           rounded-[var(--radius-sm)] border transition-all duration-150 select-none
+           disabled:opacity-45 disabled:pointer-events-none
+           bg-[var(--color-accent)] border-[var(--color-accent)] text-white shadow-[var(--shadow-sm)]
+           hover:bg-[var(--color-accent-hover)] hover:border-[var(--color-accent-hover)]
+           active:bg-[var(--color-accent-press)] active:translate-y-px;
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-4 h-10 text-sm font-semibold rounded-[var(--radius-sharp)] border transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
-    @apply bg-white border-[var(--color-line)] text-[var(--color-ink)]
-           hover:bg-[var(--color-surface-sunken)];
+    @apply inline-flex items-center justify-center gap-2 h-10 px-4 text-sm font-semibold
+           rounded-[var(--radius-sm)] border transition-all duration-150 select-none
+           disabled:opacity-45 disabled:pointer-events-none
+           bg-[var(--color-surface)] border-[var(--color-line-strong)] text-[var(--color-ink)]
+           hover:bg-[var(--color-sunken)] hover:border-[var(--color-ink-subtle)]
+           active:translate-y-px;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-4 h-10 text-sm font-semibold rounded-[var(--radius-sharp)] border transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
-    @apply bg-transparent border-transparent text-[var(--color-ink-muted)]
-           hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-ink)];
+    @apply inline-flex items-center justify-center gap-2 h-10 px-3 text-sm font-semibold
+           rounded-[var(--radius-sm)] border border-transparent transition-all duration-150
+           select-none disabled:opacity-45 disabled:pointer-events-none
+           text-[var(--color-ink-muted)] hover:bg-[var(--color-sunken)] hover:text-[var(--color-ink)];
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 h-10 px-4 text-sm font-semibold
+           rounded-[var(--radius-sm)] border transition-all duration-150 select-none
+           disabled:opacity-45 disabled:pointer-events-none
+           bg-[var(--color-danger)] border-[var(--color-danger)] text-white
+           hover:brightness-110 active:translate-y-px;
+  }
+  .btn-sm {
+    @apply h-8 px-3 text-[13px];
+  }
+  .btn-lg {
+    @apply h-12 px-6 text-base;
   }
 
+  /* Forms -------------------------------------------------------------- */
   .field {
-    @apply w-full h-10 px-3 text-sm bg-white border border-[var(--color-line)]
-           rounded-[var(--radius-sharp)] placeholder:text-[var(--color-ink-subtle)]
-           focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-offset-1;
+    @apply w-full h-10 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-line-strong)]
+           rounded-[var(--radius-sm)] text-[var(--color-ink)]
+           placeholder:text-[var(--color-ink-subtle)] transition-shadow duration-150
+           focus:outline-none focus:border-[var(--color-accent)]
+           focus:ring-4 focus:ring-[var(--color-accent-ring)]/40
+           disabled:bg-[var(--color-sunken)] disabled:text-[var(--color-ink-subtle)];
+  }
+  .field-error {
+    @apply border-[var(--color-danger)] focus:border-[var(--color-danger)]
+           focus:ring-[var(--color-danger)]/20;
   }
   .label {
-    @apply block text-xs font-bold uppercase tracking-wide text-[var(--color-ink-muted)] mb-1.5;
+    @apply block text-[11px] font-bold uppercase tracking-[0.07em] text-[var(--color-ink-muted)] mb-1.5;
+  }
+  .hint {
+    @apply mt-1.5 text-xs text-[var(--color-ink-subtle)];
   }
 
+  /* Typography --------------------------------------------------------- */
+  .h1 {
+    @apply text-[28px] leading-[1.15] font-extrabold tracking-[-0.02em] sm:text-[34px];
+  }
+  .h2 {
+    @apply text-xl font-bold tracking-[-0.01em];
+  }
+  .h3 {
+    @apply text-base font-bold;
+  }
+  .eyebrow {
+    @apply text-[11px] font-bold uppercase tracking-[0.09em] text-[var(--color-ink-subtle)];
+  }
+  .lede {
+    @apply text-[15px] leading-relaxed text-[var(--color-ink-muted)];
+  }
+
+  /* Badges ------------------------------------------------------------- */
   .badge {
-    @apply inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-bold uppercase
-           tracking-wide rounded-[var(--radius-sharp)];
+    @apply inline-flex items-center gap-1.5 h-[22px] px-2 text-[11px] font-bold
+           uppercase tracking-[0.04em] rounded-full whitespace-nowrap;
+  }
+  .badge-dot {
+    @apply h-1.5 w-1.5 rounded-full;
   }
 
+  /* Loading ------------------------------------------------------------ */
   .skeleton {
-    @apply animate-pulse bg-[var(--color-surface-sunken)] rounded-[var(--radius-sharp)];
+    @apply relative overflow-hidden bg-[var(--color-sunken)] rounded-[var(--radius-sm)];
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.65), transparent);
+    animation: shimmer 1.6s infinite;
+  }
+
+  /* Admin navigation --------------------------------------------------- */
+  .nav-item {
+    @apply flex items-center gap-3 h-9 px-3 rounded-[var(--radius-sm)] text-sm font-medium
+           text-[var(--color-ink-muted)] transition-colors duration-150
+           hover:bg-[var(--color-sunken)] hover:text-[var(--color-ink)];
+  }
+  .nav-item-active {
+    @apply flex items-center gap-3 h-9 px-3 rounded-[var(--radius-sm)] text-sm font-semibold
+           bg-[var(--color-accent-soft)] text-[var(--color-accent)];
+  }
+
+  /* Tables ------------------------------------------------------------- */
+  .th {
+    @apply px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.06em]
+           text-[var(--color-ink-subtle)] whitespace-nowrap;
+  }
+  .td {
+    @apply px-4 py-3 text-sm align-middle;
+  }
+  .row {
+    @apply border-t border-[var(--color-line)] transition-colors hover:bg-[var(--color-canvas)];
   }
 }

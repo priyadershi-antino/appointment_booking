@@ -48,3 +48,6 @@ Thumbs.db
 
 # generated Prisma client
 apps/api/src/generated/
+
+# local deployment runtime: tunnel binary, logs, pids
+.run/
