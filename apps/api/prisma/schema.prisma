@@ -1,0 +1,683 @@
+// Booking system data model.
+//
+// Two conventions run through this schema and are load-bearing:
+//
+//  1. Weekly availability is stored as LOCAL wall-clock minutes from midnight plus an IANA
+//     timezone — never as UTC. Expanding "Monday 09:00" per calendar date is what makes
+//     daylight-saving transitions come out right instead of silently 60 minutes wrong.
+//
+//  2. An appointment stores both the customer-facing interval (startsAt/endsAt) and the
+//     buffered interval it actually reserves (blockStartsAt/blockEndsAt). The buffered
+//     columns are maintained by a database trigger and are what the exclusion constraint
+//     guards, so no application code path can create an overlap.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  runtime  = "nodejs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums — kept in lockstep with packages/shared/src/enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  PROVIDER
+  CUSTOMER
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+  RESCHEDULED
+}
+
+enum ActorType {
+  CUSTOMER
+  PROVIDER
+  ADMIN
+  SYSTEM
+}
+
+enum AppointmentAction {
+  CREATED
+  CONFIRMED
+  CANCELLED
+  RESCHEDULED
+  COMPLETED
+  NO_SHOW
+  EXPIRED
+  UPDATED
+}
+
+enum CancellationReasonCode {
+  SCHEDULE_CONFLICT
+  NO_LONGER_NEEDED
+  BOOKED_BY_MISTAKE
+  PROVIDER_UNAVAILABLE
+  OTHER
+}
+
+enum LocationType {
+  IN_PERSON
+  ONLINE
+  PHONE
+}
+
+enum PaymentMode {
+  FREE
+  PAY_AT_BOOKING
+  PAY_LATER
+}
+
+enum TimeOffType {
+  VACATION
+  SICK_LEAVE
+  PERSONAL
+  HOLIDAY
+  BLOCKED
+}
+
+enum OverrideType {
+  UNAVAILABLE
+  CUSTOM_HOURS
+}
+
+enum BookingQuestionType {
+  TEXT
+  TEXTAREA
+  SELECT
+  MULTISELECT
+  CHECKBOX
+  PHONE
+  EMAIL
+  NUMBER
+}
+
+enum NotificationEvent {
+  BOOKING_CREATED
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+  BOOKING_RESCHEDULED
+  APPOINTMENT_REMINDER
+  APPOINTMENT_COMPLETED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum NotificationRecipientType {
+  CUSTOMER
+  PROVIDER
+  ADMIN
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Configuration
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Single-row table. Business-wide defaults and branding — configuration, not tenancy.
+model BusinessSettings {
+  id                 String   @id @default(uuid()) @db.Uuid
+  name               String
+  /// IANA zone the business operates in; the slot grid is anchored to local midnight here.
+  timezone           String   @default("Asia/Kolkata")
+  currency           String   @default("INR") @db.Char(3)
+  supportEmail       String?
+  logoUrl            String?
+  /// Defaults inherited by new services unless they override them.
+  defaultSlotIntervalMin Int  @default(15)
+  defaultMinNoticeMin    Int  @default(120)
+  defaultMaxAdvanceDays  Int  @default(30)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("business_settings")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Identity & access
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         UserRole
+  phone        String?
+  timezone     String    @default("Asia/Kolkata")
+  avatarUrl    String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  provider      Provider?
+  customer      Customer?
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+/// Granular capability, e.g. `appointments.cancel`. Roles expand to sets of these so
+/// authorization is checked against a capability, never against a role name in a route.
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  key         String           @unique
+  description String
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  role         UserRole
+  permissionId String     @db.Uuid
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([role, permissionId])
+  @@index([role])
+  @@map("role_permissions")
+}
+
+/// Refresh tokens are stored hashed and rotated on every use; a reused token revokes the family.
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  familyId   String    @db.Uuid
+  expiresAt  DateTime  @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  userAgent  String?
+  ipAddress  String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// People
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Provider {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @unique @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  slug        String   @unique
+  title       String?
+  bio         String?
+  /// Working hours are interpreted in this zone. Distinct from the business timezone so a
+  /// provider in another country still publishes correct local hours.
+  timezone    String   @default("Asia/Kolkata")
+  /// Soft deactivation only — a provider with history is never deleted.
+  isActive    Boolean  @default(true)
+  deletedAt   DateTime? @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  services          ServiceProvider[]
+  availabilityRules AvailabilityRule[]
+  overrides         AvailabilityOverride[]
+  timeOff           TimeOff[]
+  appointments      Appointment[]
+
+  @@index([isActive])
+  @@map("providers")
+}
+
+/// A customer may exist without a User — guest bookings are identified by email and
+/// managed through a single-use token, never by exposing the appointment id.
+model Customer {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String?   @unique @db.Uuid
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name      String
+  email     String    @unique
+  phone     String?
+  timezone  String    @default("Asia/Kolkata")
+  notes     String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+
+  appointments Appointment[]
+
+  @@index([email])
+  @@map("customers")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Catalog
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Service {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String       @unique
+  description String?
+  category    String?
+  durationMin Int
+  /// Occupied time is bufferBefore + duration + bufferAfter. Buffers stack between
+  /// neighbouring appointments — they are never merged.
+  bufferBeforeMin Int      @default(0)
+  bufferAfterMin  Int      @default(0)
+  /// Candidate start times are placed every `slotIntervalMin`, which is deliberately
+  /// independent of duration: a 30-minute service can start every 15 minutes.
+  slotIntervalMin Int      @default(15)
+  priceMinor  Int          @default(0)
+  currency    String       @default("INR") @db.Char(3)
+  paymentMode PaymentMode  @default(FREE)
+  locationType    LocationType @default(IN_PERSON)
+  locationDetail  String?
+  /// Booking window rules.
+  minNoticeMin        Int  @default(120)
+  maxAdvanceDays      Int  @default(30)
+  maxPerDay           Int?
+  maxPerCustomerPerDay Int @default(1)
+  color       String?
+  sortOrder   Int          @default(0)
+  isActive    Boolean      @default(true)
+  deletedAt   DateTime?    @db.Timestamptz(3)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(3)
+
+  cancellationPolicyId String?             @db.Uuid
+  cancellationPolicy   CancellationPolicy? @relation(fields: [cancellationPolicyId], references: [id], onDelete: SetNull)
+
+  providers    ServiceProvider[]
+  questions    BookingQuestion[]
+  appointments Appointment[]
+
+  @@index([isActive])
+  @@index([category])
+  @@map("services")
+}
+
+/// Which providers offer which services, with optional per-pair overrides.
+model ServiceProvider {
+  serviceId       String   @db.Uuid
+  service         Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  providerId      String   @db.Uuid
+  provider        Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  durationMinOverride Int?
+  priceMinorOverride  Int?
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  @@id([serviceId, providerId])
+  @@index([providerId])
+  @@map("service_providers")
+}
+
+/// Configurable rather than hard-coded, so deadlines can differ per service.
+model CancellationPolicy {
+  id                    String   @id @default(uuid()) @db.Uuid
+  name                  String
+  description           String
+  allowCancellation     Boolean  @default(true)
+  /// Minutes before the appointment after which cancellation is refused.
+  cancellationDeadlineMin Int    @default(1440)
+  allowReschedule       Boolean  @default(true)
+  rescheduleDeadlineMin Int      @default(120)
+  maxReschedules        Int      @default(3)
+  isDefault             Boolean  @default(false)
+  createdAt             DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @db.Timestamptz(3)
+
+  services Service[]
+
+  @@map("cancellation_policies")
+}
+
+model BookingQuestion {
+  id         String              @id @default(uuid()) @db.Uuid
+  serviceId  String              @db.Uuid
+  service    Service             @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  label      String
+  helpText   String?
+  type       BookingQuestionType @default(TEXT)
+  isRequired Boolean             @default(false)
+  /// Choices for SELECT/MULTISELECT, ignored otherwise.
+  options    String[]
+  sortOrder  Int                 @default(0)
+  isActive   Boolean             @default(true)
+  createdAt  DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime            @updatedAt @db.Timestamptz(3)
+
+  answers BookingAnswer[]
+
+  @@index([serviceId])
+  @@map("booking_questions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Availability
+//
+// Rules hang off the provider directly — named/alternate schedules are a later concern.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One recurring window on one weekday, e.g. Monday 09:00–13:00. A day with two windows
+/// (morning and afternoon, split by lunch) is simply two rows.
+model AvailabilityRule {
+  id         String   @id @default(uuid()) @db.Uuid
+  providerId String   @db.Uuid
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  /// 0 = Sunday, matching the JavaScript Date#getDay convention.
+  weekday    Int      @db.SmallInt
+  /// Local wall-clock minutes from midnight in the provider timezone. NOT UTC.
+  startMinute Int     @db.SmallInt
+  endMinute   Int     @db.SmallInt
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([providerId, weekday])
+  @@map("availability_rules")
+}
+
+/// A date-specific exception. CUSTOM_HOURS REPLACES that day of recurring rules outright
+/// rather than merging with them, which is the behaviour people expect from "on the 20th
+/// I work 11:00–15:00 instead".
+model AvailabilityOverride {
+  id         String       @id @default(uuid()) @db.Uuid
+  providerId String       @db.Uuid
+  provider   Provider     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  /// Calendar date in the provider timezone, stored at UTC midnight.
+  date       DateTime     @db.Date
+  type       OverrideType
+  reason     String?
+  createdAt  DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime     @updatedAt @db.Timestamptz(3)
+
+  windows AvailabilityOverrideWindow[]
+
+  @@unique([providerId, date])
+  @@index([date])
+  @@map("availability_overrides")
+}
+
+model AvailabilityOverrideWindow {
+  id          String               @id @default(uuid()) @db.Uuid
+  overrideId  String               @db.Uuid
+  override    AvailabilityOverride @relation(fields: [overrideId], references: [id], onDelete: Cascade)
+  startMinute Int                  @db.SmallInt
+  endMinute   Int                  @db.SmallInt
+
+  @@index([overrideId])
+  @@map("availability_override_windows")
+}
+
+/// Vacation, sickness, or an ad-hoc block. Stored as absolute instants because it can
+/// span days and must not shift if the provider changes timezone.
+model TimeOff {
+  id         String      @id @default(uuid()) @db.Uuid
+  providerId String      @db.Uuid
+  provider   Provider    @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  type       TimeOffType @default(BLOCKED)
+  startsAt   DateTime    @db.Timestamptz(3)
+  endsAt     DateTime    @db.Timestamptz(3)
+  isAllDay   Boolean     @default(false)
+  reason     String?
+  createdAt  DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime    @updatedAt @db.Timestamptz(3)
+
+  @@index([providerId, startsAt])
+  @@index([startsAt, endsAt])
+  @@map("time_off")
+}
+
+/// Business-wide closure. Applies to every provider; a provider-specific day off is TimeOff.
+model Holiday {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  date      DateTime @unique @db.Date
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([date])
+  @@map("holidays")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Booking
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Appointment {
+  id     String            @id @default(uuid()) @db.Uuid
+  /// Human-facing reference, e.g. APT-2026-000123.
+  code   String            @unique
+  status AppointmentStatus @default(CONFIRMED)
+
+  serviceId  String   @db.Uuid
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  providerId String   @db.Uuid
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  customerId String   @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  /// What the customer sees.
+  startsAt DateTime @db.Timestamptz(3)
+  endsAt   DateTime @db.Timestamptz(3)
+  /// What is actually reserved on the provider calendar: startsAt minus bufferBefore
+  /// through endsAt plus bufferAfter. Maintained by a trigger and guarded by the
+  /// exclusion constraint, so these are never written by application code.
+  blockStartsAt DateTime @db.Timestamptz(3)
+  blockEndsAt   DateTime @db.Timestamptz(3)
+  /// Timezone the customer booked in, so confirmations render in their local time.
+  timezone      String
+
+  /// Snapshots taken at booking time. Editing the catalog later must not rewrite history.
+  serviceName      String
+  durationMin      Int
+  bufferBeforeMin  Int
+  bufferAfterMin   Int
+  priceMinor       Int
+  currency         String       @db.Char(3)
+  paymentMode      PaymentMode
+  providerName     String
+  locationType     LocationType
+  locationDetail   String?
+
+  customerNotes String?
+  internalNotes String?
+
+  /// PENDING appointments hold their slot until this moment, after which a sweeper
+  /// releases them. The pending row itself is the hold — there is no separate table.
+  holdExpiresAt DateTime? @db.Timestamptz(3)
+
+  confirmedAt DateTime? @db.Timestamptz(3)
+  completedAt DateTime? @db.Timestamptz(3)
+
+  cancelledAt        DateTime?               @db.Timestamptz(3)
+  cancelledByType    ActorType?
+  cancelledByUserId  String?                 @db.Uuid
+  cancellationCode   CancellationReasonCode?
+  cancellationReason String?
+
+  /// Reschedule chain. The predecessor moves to RESCHEDULED and points forward; every
+  /// appointment in a chain shares the same rootAppointmentId.
+  rescheduledFromId String?      @unique @db.Uuid
+  rescheduledFrom   Appointment? @relation("RescheduleChain", fields: [rescheduledFromId], references: [id], onDelete: SetNull)
+  rescheduledTo     Appointment? @relation("RescheduleChain")
+  rootAppointmentId String       @db.Uuid
+  rescheduleCount   Int          @default(0)
+
+  /// Hashed single-use token letting a guest manage their booking from the email link.
+  manageTokenHash      String?   @unique
+  manageTokenExpiresAt DateTime? @db.Timestamptz(3)
+
+  createdByType ActorType @default(CUSTOMER)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  history       AppointmentHistory[]
+  answers       BookingAnswer[]
+  notifications NotificationLog[]
+
+  /// Availability queries always filter by provider and buffered range.
+  @@index([providerId, blockStartsAt])
+  @@index([providerId, status, blockStartsAt])
+  @@index([customerId, startsAt])
+  @@index([serviceId])
+  @@index([status])
+  @@index([startsAt])
+  @@index([rootAppointmentId])
+  @@index([holdExpiresAt])
+  @@map("appointments")
+}
+
+/// Append-only. Enforced by a trigger that rejects UPDATE and DELETE, because the whole
+/// point of a history table is that it cannot be quietly rewritten.
+model AppointmentHistory {
+  id            String             @id @default(uuid()) @db.Uuid
+  appointmentId String             @db.Uuid
+  appointment   Appointment        @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  action        AppointmentAction
+  fromStatus    AppointmentStatus?
+  toStatus      AppointmentStatus?
+  actorType     ActorType
+  actorUserId   String?            @db.Uuid
+  actorLabel    String?
+  note          String?
+  metadata      Json?
+  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
+
+  @@index([appointmentId, createdAt])
+  @@map("appointment_history")
+}
+
+model BookingAnswer {
+  id            String          @id @default(uuid()) @db.Uuid
+  appointmentId String          @db.Uuid
+  appointment   Appointment     @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  questionId    String          @db.Uuid
+  question      BookingQuestion @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  /// Snapshot of the question wording, so editing the question later does not change
+  /// what this customer was actually asked.
+  questionLabel String
+  value         String
+
+  @@unique([appointmentId, questionId])
+  @@map("booking_answers")
+}
+
+/// Makes POST /appointments safe to retry: a repeated key returns the stored response
+/// instead of creating a second booking.
+model IdempotencyKey {
+  id           String   @id @default(uuid()) @db.Uuid
+  key          String   @unique
+  endpoint     String
+  requestHash  String
+  statusCode   Int
+  responseBody Json
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt    DateTime @db.Timestamptz(3)
+
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notifications & audit
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Transactional outbox. Rows are written inside the same transaction as the booking they
+/// describe, so a committed booking always eventually notifies and a rolled-back one never
+/// does. A poller claims rows with FOR UPDATE SKIP LOCKED and delivers them.
+model OutboxEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  eventType   String
+  payload     Json
+  /// When this becomes due. Reminders are simply outbox rows scheduled into the future.
+  scheduledFor DateTime @default(now()) @db.Timestamptz(3)
+  processedAt DateTime? @db.Timestamptz(3)
+  attempts    Int       @default(0)
+  lastError   String?
+  /// Set once attempts are exhausted; these are surfaced in the admin UI rather than lost.
+  deadLetteredAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([processedAt, scheduledFor])
+  @@index([deadLetteredAt])
+  @@map("outbox_events")
+}
+
+model NotificationTemplate {
+  id        String              @id @default(uuid()) @db.Uuid
+  event     NotificationEvent
+  channel   NotificationChannel @default(EMAIL)
+  recipient NotificationRecipientType
+  subject   String
+  /// Handlebars-style {{placeholders}} resolved against the appointment.
+  body      String
+  isActive  Boolean             @default(true)
+  createdAt DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime            @updatedAt @db.Timestamptz(3)
+
+  @@unique([event, channel, recipient])
+  @@map("notification_templates")
+}
+
+model NotificationLog {
+  id            String                    @id @default(uuid()) @db.Uuid
+  appointmentId String?                   @db.Uuid
+  appointment   Appointment?              @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  event         NotificationEvent
+  channel       NotificationChannel
+  recipientType NotificationRecipientType
+  recipient     String
+  subject       String?
+  status        NotificationStatus        @default(PENDING)
+  error         String?
+  sentAt        DateTime?                 @db.Timestamptz(3)
+  createdAt     DateTime                  @default(now()) @db.Timestamptz(3)
+
+  @@index([appointmentId])
+  @@index([status, createdAt])
+  @@map("notification_logs")
+}
+
+/// Who did what to which record. Written explicitly by the services that mutate state.
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @db.Uuid
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorType   ActorType
+  actorLabel  String?
+  action      String
+  entity      String
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([entity, entityId])
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

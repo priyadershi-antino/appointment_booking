@@ -1,0 +1,104 @@
+@import 'tailwindcss';
+
+/*
+ * Design system — high-contrast and bold.
+ *
+ * Strong black-on-white typography, one vivid accent, flat surfaces with hard 1px
+ * borders and almost no shadow, tight radii. The restraint is the point: colour is
+ * reserved for the accent and for status, so when something IS coloured it means
+ * something. Defined as tokens before any screen is built, so the UI cannot drift.
+ */
+@theme {
+  --color-ink: #0a0a0a;
+  --color-ink-muted: #52525b;
+  --color-ink-subtle: #8b8b94;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #f6f6f7;
+  --color-line: #1f1f23;
+  --color-line-soft: #e4e4e7;
+
+  --color-accent: #4f2fe0;
+  --color-accent-hover: #3f21c4;
+  --color-accent-soft: #efeaff;
+
+  /* Status colours. Each pairs a saturated mark with a pale ground so badges stay
+     legible without shouting. */
+  --color-confirmed: #0b6b3a;
+  --color-confirmed-soft: #dff5e8;
+  --color-pending: #8a5a00;
+  --color-pending-soft: #fdf0d5;
+  --color-cancelled: #a01b2b;
+  --color-cancelled-soft: #fde7ea;
+  --color-completed: #1f4fa8;
+  --color-completed-soft: #e4edff;
+  --color-noshow: #52525b;
+  --color-noshow-soft: #ececef;
+
+  --radius-sharp: 4px;
+  --radius-base: 6px;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible, unmistakable focus. Keyboard users get the same clarity as the rest. */
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@layer components {
+  .card {
+    @apply border border-[var(--color-line)] bg-white rounded-[var(--radius-base)];
+  }
+
+  /* Tailwind v4 will not @apply a class defined in the same layer, so each button
+     variant spells out the shared base rather than composing from `.btn`. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 h-10 text-sm font-semibold rounded-[var(--radius-sharp)] border transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 h-10 text-sm font-semibold rounded-[var(--radius-sharp)] border transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+    @apply bg-[var(--color-accent)] border-[var(--color-accent)] text-white
+           hover:bg-[var(--color-accent-hover)] hover:border-[var(--color-accent-hover)];
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 h-10 text-sm font-semibold rounded-[var(--radius-sharp)] border transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+    @apply bg-white border-[var(--color-line)] text-[var(--color-ink)]
+           hover:bg-[var(--color-surface-sunken)];
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 h-10 text-sm font-semibold rounded-[var(--radius-sharp)] border transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+    @apply bg-transparent border-transparent text-[var(--color-ink-muted)]
+           hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-ink)];
+  }
+
+  .field {
+    @apply w-full h-10 px-3 text-sm bg-white border border-[var(--color-line)]
+           rounded-[var(--radius-sharp)] placeholder:text-[var(--color-ink-subtle)]
+           focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-offset-1;
+  }
+  .label {
+    @apply block text-xs font-bold uppercase tracking-wide text-[var(--color-ink-muted)] mb-1.5;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-bold uppercase
+           tracking-wide rounded-[var(--radius-sharp)];
+  }
+
+  .skeleton {
+    @apply animate-pulse bg-[var(--color-surface-sunken)] rounded-[var(--radius-sharp)];
+  }
+}

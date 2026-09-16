@@ -1,0 +1,40 @@
+{
+  "name": "booking-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production-grade appointment booking system — Express API + Next.js web client",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run build --workspace=@booking/shared && concurrently -n shared,api,web -c gray,cyan,magenta \"npm:dev:shared\" \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev --workspace=@booking/api",
+    "dev:web": "npm run dev --workspace=@booking/web",
+    "build": "npm run build --workspace=@booking/shared && npm run build --workspace=@booking/api && npm run build --workspace=@booking/web",
+    "start:api": "npm run start --workspace=@booking/api",
+    "start:web": "npm run start --workspace=@booking/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "lint:fix": "npm run lint:fix --workspaces --if-present",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,css}\"",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:watch": "npm run test:watch --workspace=@booking/api",
+    "db:migrate": "npm run db:migrate --workspace=@booking/api",
+    "db:migrate:deploy": "npm run db:migrate:deploy --workspace=@booking/api",
+    "db:generate": "npm run db:generate --workspace=@booking/api",
+    "db:seed": "npm run db:seed --workspace=@booking/api",
+    "db:reset": "npm run db:reset --workspace=@booking/api",
+    "db:studio": "npm run db:studio --workspace=@booking/api",
+    "verify": "npm run typecheck && npm run lint && npm run test",
+    "dev:shared": "npm run dev --workspace=@booking/shared"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "prettier": "^3.6.2"
+  }
+}
