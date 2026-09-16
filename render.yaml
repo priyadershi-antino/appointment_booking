@@ -18,6 +18,9 @@ databases:
     databaseName: booking
     user: booking
     plan: free
+    # Must match the services below. A database in another region means every query
+    # crosses a continent, and free-tier cross-region access is not guaranteed.
+    region: singapore
 
 services:
   # ── API ────────────────────────────────────────────────────────────────────
@@ -41,6 +44,8 @@ services:
       npm run start --workspace=@booking/api
     healthCheckPath: /health
     envVars:
+      - key: NODE_VERSION
+        value: '22'
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
@@ -73,8 +78,12 @@ services:
       npm ci &&
       npm run build --workspace=@booking/shared &&
       npm run build --workspace=@booking/web
+    # `next start` binds $PORT, which Render assigns and then health-checks. Passing an
+    # explicit -p here would bind the wrong port and the deploy would be marked failed.
     startCommand: npm run start --workspace=@booking/web
     envVars:
+      - key: NODE_VERSION
+        value: '22'
       - key: NODE_ENV
         value: production
       # Set this to the API service URL after the first deploy. It is baked into the

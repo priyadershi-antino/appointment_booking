@@ -2,9 +2,9 @@
   "name": "booking-system",
   "version": "1.0.0",
   "private": true,
-  "description": "Production-grade appointment booking system — Express API + Next.js web client",
+  "description": "Production-grade appointment booking system \u2014 Express API + Next.js web client",
   "engines": {
-    "node": ">=20.11.0"
+    "node": ">=20.19.0"
   },
   "workspaces": [
     "packages/*",
