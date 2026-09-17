@@ -247,6 +247,7 @@ export function Dialog({
   description,
   children,
   footer,
+  maxWidth = 'sm:max-w-md',
 }: {
   open: boolean;
   onClose: () => void;
@@ -254,8 +255,11 @@ export function Dialog({
   description?: string;
   children?: ReactNode;
   footer?: ReactNode;
+  maxWidth?: string;
 }) {
   const panel = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -266,7 +270,7 @@ export function Dialog({
       panel.current?.focus();
 
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') onCloseRef.current();
       if (event.key !== 'Tab') return;
 
       const focusable = panel.current?.querySelectorAll<HTMLElement>(
@@ -291,7 +295,7 @@ export function Dialog({
       document.body.style.overflow = '';
       previous?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -308,7 +312,7 @@ export function Dialog({
         aria-modal="true"
         aria-labelledby="dialog-title"
         tabIndex={-1}
-        className="animate-rise relative w-full sm:max-w-md bg-white rounded-t-[var(--radius-lg)] sm:rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] outline-none"
+        className={`animate-rise relative w-full ${maxWidth} bg-white rounded-t-[var(--radius-lg)] sm:rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] outline-none`}
       >
         <div className="p-5 sm:p-6">
           <h2 id="dialog-title" className="h2">

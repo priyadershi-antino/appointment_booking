@@ -320,7 +320,9 @@ export default function ServicesPage() {
 
               <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-[var(--color-line)] pt-4 text-sm sm:grid-cols-3">
                 <Detail label="Duration">{service.durationMin} min</Detail>
-                <Detail label="Price">{currencyFormat(service.priceMinor, service.currency)}</Detail>
+                <Detail label="Price">
+                  {currencyFormat(service.priceMinor, service.currency)}
+                </Detail>
                 <Detail label="Slot every">{service.slotIntervalMin} min</Detail>
                 <Detail label="Buffers">
                   {service.bufferBeforeMin}/{service.bufferAfterMin}
@@ -365,6 +367,7 @@ export default function ServicesPage() {
       <Dialog
         open={creating}
         onClose={() => setCreating(false)}
+        maxWidth="sm:max-w-2xl"
         title={editing ? `Edit ${editing.name}` : 'New service'}
         description={
           editing
@@ -485,8 +488,8 @@ export default function ServicesPage() {
               </Field>
             </div>
             <p className="hint">
-              Buffers reserve time either side and stack between neighbours, so the gap between
-              two appointments is this service&apos;s after-buffer plus the next one&apos;s
+              Buffers reserve time either side and stack between neighbours, so the gap between two
+              appointments is this service&apos;s after-buffer plus the next one&apos;s
               before-buffer.
             </p>
           </fieldset>
@@ -657,15 +660,7 @@ export default function ServicesPage() {
   );
 }
 
-function Field({
-  label,
-  id,
-  children,
-}: {
-  label: string;
-  id: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, id, children }: { label: string; id: string; children: React.ReactNode }) {
   return (
     <div>
       <label className="label" htmlFor={id}>
